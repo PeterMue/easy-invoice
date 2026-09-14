@@ -528,7 +528,7 @@ Erika Mustermann</p>
   }
 
   function text(el) {
-    return el ? el.textContent.trim() : "";
+    return el ? el.innerText.trim() : "";
   }
 
   // ---- Keep all invoice-number fields (header + info block) in sync ----
@@ -664,7 +664,7 @@ Erika Mustermann</p>
   // ---- Bookmark state: serialize all fields to a URL-safe base64 payload ----
   function getFieldText(id) {
     var el = document.getElementById(id);
-    return el ? el.textContent : "";
+    return el ? el.innerText : "";
   }
   function setFieldText(id, value) {
     var el = document.getElementById(id);
