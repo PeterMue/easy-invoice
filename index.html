@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Rechnung</title>
+<style>
+  /* ---------- Page setup (A4, printable) ---------- */
+  @page {
+    size: A4;
+    margin: 0;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 11pt;
+    color: #1a1a1a;
+    background: #e5e5e5;
+  }
+
+  .page {
+    position: relative;
+    width: 210mm;
+    min-height: 297mm;
+    margin: 10mm auto;
+    background: #fff;
+    box-shadow: 0 0 6px rgba(0,0,0,0.3);
+    /* Establish a new block formatting context so .content's margin-top
+       does not collapse with .page's margin (which would push the whole
+       page box down instead of the content inside it). */
+    display: flow-root;
+    /* No padding here: absolute children (address window, info block, footer)
+       measure top/left/right from this element's edges, so DIN 5008
+       coordinates must be applied directly against the page, not doubled
+       up with padding. Left/right margins for flowing content are added
+       on .content / .footer individually below. */
+  }
+
+  /* ---------- DIN 5008 address window ---------- */
+  /* Window (Fenster) position for standard long C6/5 window envelopes:
+     - top edge of window: 45mm from top
+     - left edge of window: 20mm from left
+     - window size: approx. 85mm x 45mm (fits sender line + 4-5 address lines)
+  */
+  .address-window {
+    position: absolute;
+    top: 45mm;
+    left: 20mm;
+    width: 85mm;
+    height: 45mm;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  /* ---------- Optional letterhead: company/person name + subline ----------
+     Sits fully at the top of the page, above the DIN 5008 address window
+     zone (which starts at 45mm), so it never collides with the window
+     envelope area. Hidden automatically for print when the name is empty.
+  */
+  .letterhead {
+    position: absolute;
+    top: 12mm;
+    left: 20mm;
+    right: 25mm;
+    text-align: right;
+  }
+  .letterhead-name {
+    font-size: 15pt;
+    font-weight: bold;
+    letter-spacing: 0.3px;
+    color: #2b3a4a;
+  }
+  .letterhead-slogan {
+    font-size: 9pt;
+    color: #777;
+    margin-top: 1mm;
+    font-style: italic;
+  }
+
+  .sender-line {
+    font-size: 7pt;
+    color: #444;
+    border-bottom: 1px solid #444;
+    padding-bottom: 1mm;
+    margin-bottom: 3mm;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
+  }
+
+  .recipient-block {
+    font-size: 10.5pt;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    display: block;
+    min-height: 1.4em;
+  }
+
+  /* ---------- Info block, right aligned next to address window ---------- */
+  .info-block {
+    position: absolute;
+    top: 45mm;
+    right: 25mm;
+    width: 60mm;
+    font-size: 9.5pt;
+    line-height: 1.5;
+  }
+  .info-block table { width: 100%; border-collapse: collapse; }
+  .info-block td { padding: 0.5mm 0; vertical-align: top; }
+  .info-block td:first-child { color: #555; white-space: nowrap; padding-right: 3mm; }
+
+  /* ---------- Content starts below the address window area ---------- */
+  .content {
+    margin-top: 95mm; /* clears address window (45mm + 45mm) plus spacing */
+    padding: 0 25mm 20mm 20mm; /* DIN 5008 left/right margins for flowing content */
+  }
+
+  h1.invoice-title {
+    font-size: 18pt;
+    margin: 0 0 6mm 0;
+    letter-spacing: 0.5px;
+  }
+
+  .intro-text {
+    margin-bottom: 6mm;
+    line-height: 1.5;
+  }
+
+  table.items {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 3mm;
+  }
+  table.items thead th {
+    text-align: left;
+    font-size: 9.5pt;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    color: #fff;
+    background: #2b3a4a;
+    padding: 3mm 2mm;
+  }
+  table.items thead th.num { text-align: right; }
+  table.items tbody td {
+    padding: 2.5mm 2mm;
+    border-bottom: 1px solid #ddd;
+    font-size: 10pt;
+  }
+  table.items tbody td.num { text-align: right; white-space: nowrap; }
+  table.items tbody tr:nth-child(even) { background: #f7f8f9; }
+  table.items .qty-input { display: inline-block; min-width: 1.5em; text-align: right; }
+  table.items .unit-input { display: inline-block; min-width: 1.5em; }
+  table.items th.col-actions,
+  table.items td.col-actions { width: 8mm; padding: 0; text-align: center; }
+
+  .btn-remove-row, .btn-add-row {
+    font-family: Arial, Helvetica, sans-serif;
+    cursor: pointer;
+    border: 1px solid #ccc;
+    background: #f5f5f5;
+    color: #555;
+    border-radius: 3px;
+  }
+  .btn-remove-row {
+    width: 5mm;
+    height: 5mm;
+    line-height: 1;
+    font-size: 10pt;
+    padding: 0;
+  }
+  .btn-remove-row:hover { background: #fde2e2; border-color: #e08a8a; color: #a33; }
+
+  .add-row-wrap { margin-bottom: 6mm; }
+  .btn-add-row {
+    font-size: 9pt;
+    padding: 1.5mm 3mm;
+  }
+  .btn-add-row:hover { background: #e6f0fb; border-color: #8ab4e0; color: #1a5aa8; }
+
+  .totals {
+    width: 70mm;
+    margin-left: auto;
+    border-collapse: collapse;
+    margin-bottom: 8mm;
+  }
+  .totals td { padding: 1.2mm 2mm; font-size: 10pt; }
+  .totals td.label { text-align: left; color: #444; }
+  .totals td.num { text-align: right; white-space: nowrap; }
+  .totals tr.grand-total td {
+    border-top: 2px solid #2b3a4a;
+    font-weight: bold;
+    font-size: 11.5pt;
+    padding-top: 2mm;
+  }
+  .tax-rate-input { display: inline-block; min-width: 1.2em; text-align: right; }
+
+  .notes {
+    margin-bottom: 10mm;
+    line-height: 1.5;
+    font-size: 10pt;
+    white-space: pre-wrap;
+    display: block;
+  }
+
+  .footer {
+    position: absolute;
+    bottom: 10mm;
+    left: 20mm;
+    right: 25mm;
+    font-size: 8pt;
+    color: #555;
+    border-top: 1px solid #ccc;
+    padding-top: 3mm;
+    display: flex;
+    justify-content: space-between;
+    gap: 4mm;
+  }
+  .footer .col { flex: 1; line-height: 1.5; }
+
+  /* ---------- Screen-only helper guides (hidden when printing) ---------- */
+  .fold-marks {
+    position: absolute;
+    left: 0;
+    width: 4mm;
+    border-top: 1px dashed #bbb;
+  }
+  .fold-marks.f1 { top: 105mm; }
+  .fold-marks.f2 { top: 210mm; }
+
+  /* ---------- Editable fields ----------
+     Editable fields are plain contenteditable text: no border or
+     background by default, so the printed page looks like a normal
+     document. On screen we add a subtle hover/focus affordance so it's
+     clear the text can be clicked and edited; this never appears in print.
+  */
+  [contenteditable="true"] {
+    outline: none;
+    border-radius: 2px;
+  }
+  @media screen {
+    [contenteditable="true"]:hover {
+      background: rgba(74, 144, 217, 0.08);
+    }
+    [contenteditable="true"]:focus {
+      background: rgba(74, 144, 217, 0.12);
+      box-shadow: 0 0 0 1px rgba(74, 144, 217, 0.5);
+    }
+    [contenteditable="true"]:empty::before {
+      content: attr(data-placeholder);
+      color: #aaa;
+      font-style: italic;
+    }
+  }
+
+  /* Rows/fields that are optional get hidden for print automatically when
+     left empty (see JS: toggles this class before printing). */
+  @media print {
+    .is-empty-for-print { display: none !important; }
+  }
+
+  /* Elements only meant to help while editing on screen (buttons, hints,
+     placeholders) must never show up on the printed page. */
+  .no-print { }
+  @media print {
+    .no-print { display: none !important; }
+  }
+
+  @media print {
+    html, body { background: #fff; }
+    .page {
+      margin: 0;
+      box-shadow: none;
+      width: auto;
+      /* Keep min-height: 297mm (inherited from .page's base rule) so the
+         page box always spans one full A4 page height even with little
+         content. The footer is absolutely positioned at bottom: 10mm
+         relative to .page, so if .page were allowed to shrink to fit its
+         content (min-height: auto), the footer would move up with it
+         instead of staying anchored to the physical bottom of the page. */
+    }
+    .fold-marks { display: none; }
+  }
+
+  @media screen {
+    .print-hint {
+      max-width: 210mm;
+      margin: 0 auto 10px auto;
+      padding: 8px 12px;
+      font-family: Arial, sans-serif;
+      font-size: 12px;
+      background: #fff3cd;
+      border: 1px solid #ffe08a;
+      border-radius: 4px;
+    }
+    .print-hint p { margin: 0 0 6px 0; }
+    .print-hint p:last-child { margin-bottom: 0; }
+    .print-hint .btn-add-row {
+      margin-left: 4px;
+      font-size: 12px;
+      padding: 3px 8px;
+      vertical-align: baseline;
+    }
+    .print-hint .btn-add-row.copied {
+      background: #d4f4dd;
+      border-color: #7fcf9a;
+      color: #1c7a3d;
+    }
+  }
+  @media print {
+    .print-hint { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="print-hint">
+  <p>
+    Diese Seite ist für den Druck auf A4 optimiert und für Fensterumschläge (DIN 5008, Fenster links) ausgerichtet.
+    Klicken Sie auf beliebigen Text, um ihn zu bearbeiten. Leere optionale Felder (z.&nbsp;B. Kundennummer) werden beim
+    Drucken automatisch ausgeblendet. Zum Drucken <strong>Strg/Cmd+P</strong> verwenden.
+  </p>
+  <p>
+    💡 Tipp: Mit <strong>„Aktuellen Stand als Link kopieren“</strong> speichern Sie alle eingetragenen Daten als Lesezeichen-Link
+    (Base64-kodiert in der URL) – öffnen Sie den Link später erneut, um die Rechnung genau in diesem Zustand wiederherzustellen.
+    <button type="button" id="copy-state-link" class="btn-add-row">🔗 Aktuellen Stand als Link kopieren</button>
+  </p>
+</div>
+
+<div class="page">
+
+  <!-- Fold marks for helping fold the letter for DIN long envelopes -->
+  <div class="fold-marks f1"></div>
+  <div class="fold-marks f2"></div>
+
+  <!-- Optional letterhead: company/person name + subline (slogan). Hidden
+       automatically when the name is left empty. -->
+  <div class="letterhead" data-optional-row>
+    <div class="letterhead-name" id="field-letterhead-name" contenteditable="true" data-value data-placeholder="Firmen-/Personenname (optional)"></div>
+    <div class="letterhead-slogan" id="field-letterhead-slogan" contenteditable="true" data-optional data-placeholder="Slogan / Untertitel (optional)"></div>
+  </div>
+
+  <!-- DIN 5008 address window: sender line + recipient -->
+  <div class="address-window">
+    <div class="sender-line" id="field-sender" contenteditable="true" data-placeholder="Absenderzeile">Erika Mustermann · Musterweg 5 · 12345 Musterstadt · GERMANY</div>
+    <div class="recipient-block" id="field-recipient" contenteditable="true" data-placeholder="Empfängeradresse">Max Mustermann
+Musterweg 22
+54321 Beispielstadt</div>
+  </div>
+
+  <!-- Invoice meta info, right column -->
+  <div class="info-block">
+    <table>
+      <tr>
+        <td>Rechnungsnummer:</td>
+        <td contenteditable="true" data-role="invoice-number" data-placeholder="RE-0000">RE-2026-00123</td>
+      </tr>
+      <tr>
+        <td>Rechnungsdatum:</td>
+        <td id="field-invoice-date" contenteditable="true" data-placeholder="TT.MM.JJJJ">14.09.2026</td>
+      </tr>
+      <tr>
+        <td>Leistungsdatum:</td>
+        <td id="field-service-date" contenteditable="true" data-placeholder="TT.MM.JJJJ">10.09.2026</td>
+      </tr>
+      <tr data-optional-row>
+        <td>Kundennummer:</td>
+        <td id="field-customer-number" contenteditable="true" data-value data-placeholder="(optional)"></td>
+      </tr>
+      <tr data-optional-row>
+        <td>Ihr Ansprechpartner:</td>
+        <td id="field-contact-person" contenteditable="true" data-value data-placeholder="(optional)"></td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- Main content -->
+  <div class="content">
+    <h1 class="invoice-title">
+      Rechnung Nr. <span contenteditable="true" data-role="invoice-number" data-placeholder="RE-0000">RE-2026-00123</span>
+    </h1>
+
+    <p class="intro-text">
+      <span id="field-greeting" contenteditable="true" data-placeholder="Anrede">Sehr geehrter Herr Mustermann,</span><br>
+      <span id="field-intro" contenteditable="true" data-placeholder="Einleitungstext">vielen Dank für Ihren Auftrag. Wir erlauben uns, Ihnen wie vereinbart folgende Leistungen in Rechnung zu stellen:</span>
+    </p>
+
+    <table class="items">
+      <thead>
+        <tr>
+          <th>Pos.</th>
+          <th>Beschreibung</th>
+          <th class="num">Menge</th>
+          <th class="num">Einzelpreis</th>
+          <th class="num">Gesamt</th>
+          <th class="col-actions no-print"></th>
+        </tr>
+      </thead>
+      <tbody id="items-body">
+        <tr>
+          <td class="pos">1</td>
+          <td contenteditable="true" data-role="description" data-placeholder="Beschreibung">Webdesign &amp; Entwicklung Startseite</td>
+          <td class="num">
+            <span class="qty-input" contenteditable="true" data-role="quantity" inputmode="decimal">10</span>
+            <span class="unit-input" contenteditable="true" data-role="unit" data-placeholder="Einheit">Std.</span>
+          </td>
+          <td class="num"><span contenteditable="true" data-role="unitPrice" inputmode="decimal">85,00</span>&nbsp;€</td>
+          <td class="num" data-role="lineTotal">850,00&nbsp;€</td>
+          <td class="col-actions no-print"><button type="button" class="btn-remove-row" title="Zeile entfernen">×</button></td>
+        </tr>
+        <tr>
+          <td class="pos">2</td>
+          <td contenteditable="true" data-role="description" data-placeholder="Beschreibung">Hosting &amp; Domainverwaltung (12 Monate)</td>
+          <td class="num">
+            <span class="qty-input" contenteditable="true" data-role="quantity" inputmode="decimal">1</span>
+            <span class="unit-input" contenteditable="true" data-role="unit" data-placeholder="Einheit"></span>
+          </td>
+          <td class="num"><span contenteditable="true" data-role="unitPrice" inputmode="decimal">120,00</span>&nbsp;€</td>
+          <td class="num" data-role="lineTotal">120,00&nbsp;€</td>
+          <td class="col-actions no-print"><button type="button" class="btn-remove-row" title="Zeile entfernen">×</button></td>
+        </tr>
+        <tr>
+          <td class="pos">3</td>
+          <td contenteditable="true" data-role="description" data-placeholder="Beschreibung">Content-Erstellung &amp; SEO-Optimierung</td>
+          <td class="num">
+            <span class="qty-input" contenteditable="true" data-role="quantity" inputmode="decimal">5</span>
+            <span class="unit-input" contenteditable="true" data-role="unit" data-placeholder="Einheit">Std.</span>
+          </td>
+          <td class="num"><span contenteditable="true" data-role="unitPrice" inputmode="decimal">75,00</span>&nbsp;€</td>
+          <td class="num" data-role="lineTotal">375,00&nbsp;€</td>
+          <td class="col-actions no-print"><button type="button" class="btn-remove-row" title="Zeile entfernen">×</button></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Hidden template used to create new item rows -->
+    <template id="item-row-template">
+      <tr>
+        <td class="pos">0</td>
+        <td contenteditable="true" data-role="description" data-placeholder="Beschreibung"></td>
+        <td class="num">
+          <span class="qty-input" contenteditable="true" data-role="quantity" inputmode="decimal">1</span>
+          <span class="unit-input" contenteditable="true" data-role="unit" data-placeholder="Einheit"></span>
+        </td>
+        <td class="num"><span contenteditable="true" data-role="unitPrice" inputmode="decimal">0,00</span>&nbsp;€</td>
+        <td class="num" data-role="lineTotal">0,00&nbsp;€</td>
+        <td class="col-actions no-print"><button type="button" class="btn-remove-row" title="Zeile entfernen">×</button></td>
+      </tr>
+    </template>
+
+    <div class="no-print add-row-wrap">
+      <button type="button" id="add-item-row" class="btn-add-row">+ Position hinzufügen</button>
+    </div>
+
+    <table class="totals">
+      <tr>
+        <td class="label">Zwischensumme (netto)</td>
+        <td class="num" id="total-net"></td>
+      </tr>
+      <tr>
+        <td class="label">zzgl. <span class="tax-rate-input" id="field-tax-rate" contenteditable="true" data-role="taxRate" data-placeholder="0" inputmode="decimal"></span>&nbsp;% USt.</td>
+        <td class="num" id="total-tax"></td>
+      </tr>
+      <tr class="grand-total">
+        <td class="label" id="total-gross-label">Rechnungsbetrag</td>
+        <td class="num" id="total-gross"></td>
+      </tr>
+    </table>
+
+    <p class="notes" id="field-vat-note" data-optional data-placeholder="(Hinweis, wird beim Druck ausgeblendet falls leer)" contenteditable="true">Dies ist eine private Abrechnung.
+Die Leistung erfolgt als Privatperson unter Ausschluss der Gewährleistung.
+Gemäß den Regelungen für Privatpersonen wird keine Umsatzsteuer ausgewiesen.</p>
+
+    <p class="notes" id="field-note-payment" contenteditable="true" data-placeholder="Hinweistext">Bitte überweisen Sie den Rechnungsbetrag innerhalb von 14 Tagen ohne Abzug auf das unten angegebene Konto. Vielen Dank für Ihr Vertrauen und die gute Zusammenarbeit.</p>
+
+    <p class="notes" id="field-note-signature" contenteditable="true" data-placeholder="Grußformel">Mit freundlichen Grüßen
+Erika Mustermann</p>
+  </div>
+
+  <!-- Footer with company / bank / tax details -->
+  <div class="footer">
+    <div class="col">
+      <div><strong id="field-footer-name" contenteditable="true" data-placeholder="Name">Erika Mustermann</strong></div>
+      <div data-optional-row><span id="field-footer-street" contenteditable="true" data-value data-placeholder="Straße">Musterweg 5</span></div>
+      <div data-optional-row><span id="field-footer-zipcity" contenteditable="true" data-value data-placeholder="PLZ Ort">12345 Musterstadt</span></div>
+      <div data-optional-row>Geschäftsführer: <span id="field-footer-ceo" contenteditable="true" data-value data-placeholder="(optional)"></span></div>
+    </div>
+    <div class="col">
+      <div data-optional-row>Tel.: <span id="field-footer-phone" contenteditable="true" data-value data-placeholder="(optional)">01234 567890</span></div>
+      <div data-optional-row>E-Mail: <span id="field-footer-email" contenteditable="true" data-value data-placeholder="(optional)">info@example.de</span></div>
+      <div data-optional-row>Web: <span id="field-footer-web" contenteditable="true" data-value data-placeholder="(optional)"></span></div>
+      <div data-optional-row>USt-IdNr.: <span id="field-footer-vatid" contenteditable="true" data-value data-placeholder="(optional)"></span></div>
+    </div>
+    <div class="col">
+      <div data-optional-row>Bank: <span id="field-footer-bankname" contenteditable="true" data-value data-placeholder="(optional)">Musterbank</span></div>
+      <div data-optional-row>IBAN: <span id="field-footer-iban" contenteditable="true" data-value data-placeholder="(optional)">DE12 3456 7890 1234 5678 90</span></div>
+      <div data-optional-row>BIC: <span id="field-footer-bic" contenteditable="true" data-value data-placeholder="(optional)">MUSTDE12XXX</span></div>
+      <div data-optional-row><span id="field-footer-register" contenteditable="true" data-value data-placeholder="(optional, z.B. Registergericht)"></span></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var CURRENCY_LOCALE = "de-DE";
+  var CURRENCY_CODE = "EUR";
+
+  var numberFmt = new Intl.NumberFormat(CURRENCY_LOCALE, { style: "currency", currency: CURRENCY_CODE });
+  var plainNumberFmt = new Intl.NumberFormat(CURRENCY_LOCALE, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  function parseNumber(text) {
+    // Accepts German-formatted numbers like "1.234,56" or plain "85" / "85.5".
+    if (!text) return 0;
+    var cleaned = String(text).trim().replace(/[^\d,.\-]/g, "");
+    if (cleaned.indexOf(",") !== -1 && cleaned.indexOf(".") !== -1) {
+      cleaned = cleaned.replace(/\./g, "").replace(",", ".");
+    } else if (cleaned.indexOf(",") !== -1) {
+      cleaned = cleaned.replace(",", ".");
+    }
+    var n = parseFloat(cleaned);
+    return isNaN(n) ? 0 : n;
+  }
+
+  function text(el) {
+    return el ? el.textContent.trim() : "";
+  }
+
+  // ---- Keep all invoice-number fields (header + info block) in sync ----
+  var invoiceNumberFields = document.querySelectorAll('[data-role="invoice-number"]');
+  function syncInvoiceNumbers(source) {
+    var value = source.textContent;
+    invoiceNumberFields.forEach(function (el) {
+      if (el !== source) el.textContent = value;
+    });
+  }
+  invoiceNumberFields.forEach(function (el) {
+    el.addEventListener("input", function () { syncInvoiceNumbers(el); });
+  });
+
+  // ---- Item rows: renumbering, totals, add/remove ----
+  var itemsBody = document.getElementById("items-body");
+  var rowTemplate = document.getElementById("item-row-template");
+
+  function renumberRows() {
+    var rows = itemsBody.querySelectorAll("tr");
+    rows.forEach(function (row, i) {
+      var posCell = row.querySelector(".pos");
+      if (posCell) posCell.textContent = i + 1;
+    });
+  }
+
+  function recalcTotals() {
+    var netTotal = 0;
+    itemsBody.querySelectorAll("tr").forEach(function (row) {
+      var qty = parseNumber(text(row.querySelector('[data-role="quantity"]')));
+      var unitPrice = parseNumber(text(row.querySelector('[data-role="unitPrice"]')));
+      var lineTotal = qty * unitPrice;
+      netTotal += lineTotal;
+      var lineTotalCell = row.querySelector('[data-role="lineTotal"]');
+      if (lineTotalCell) lineTotalCell.innerHTML = numberFmt.format(lineTotal).replace(" ", "&nbsp;");
+    });
+
+    var taxRateEl = document.querySelector('[data-role="taxRate"]');
+    var taxRate = parseNumber(text(taxRateEl));
+    var tax = netTotal * (taxRate / 100);
+    var grossTotal = netTotal + tax;
+
+    document.getElementById("total-net").innerHTML = numberFmt.format(netTotal).replace(" ", "&nbsp;");
+    document.getElementById("total-tax").innerHTML = numberFmt.format(tax).replace(" ", "&nbsp;");
+    document.getElementById("total-gross").innerHTML = numberFmt.format(grossTotal).replace(" ", "&nbsp;");
+
+    var grossLabel = document.getElementById("total-gross-label");
+    var netRow = document.getElementById("total-net").closest("tr");
+    var taxRow = document.getElementById("total-tax").closest("tr");
+    if (taxRate > 0) {
+      grossLabel.textContent = "Gesamtbetrag";
+      netRow.classList.remove("is-empty-for-print");
+      taxRow.classList.remove("is-empty-for-print");
+    } else {
+      // No VAT is charged (private invoice / Kleinunternehmer): hide the
+      // net/tax breakdown for print and just show a single total.
+      grossLabel.textContent = "Rechnungsbetrag";
+      netRow.classList.add("is-empty-for-print");
+      taxRow.classList.add("is-empty-for-print");
+    }
+  }
+
+  function addRemoveHandler(row) {
+    var btn = row.querySelector(".btn-remove-row");
+    if (!btn) return;
+    btn.addEventListener("click", function () {
+      if (itemsBody.querySelectorAll("tr").length <= 1) return; // keep at least one row
+      row.parentNode.removeChild(row);
+      renumberRows();
+      recalcTotals();
+    });
+  }
+
+  itemsBody.querySelectorAll("tr").forEach(addRemoveHandler);
+
+  document.getElementById("add-item-row").addEventListener("click", function () {
+    var fragment = rowTemplate.content.cloneNode(true);
+    var newRow = fragment.querySelector("tr");
+    itemsBody.appendChild(newRow);
+    addRemoveHandler(newRow);
+    renumberRows();
+    recalcTotals();
+    var firstField = newRow.querySelector('[data-role="description"]');
+    if (firstField) firstField.focus();
+  });
+
+  // Recalculate whenever a quantity/unit price/tax rate field changes.
+  document.addEventListener("input", function (e) {
+    var role = e.target.getAttribute && e.target.getAttribute("data-role");
+    if (role === "quantity" || role === "unitPrice" || role === "taxRate") {
+      recalcTotals();
+    }
+  });
+
+  // ---- Optional fields: hide their row/line for print when left empty ----
+  function updateOptionalVisibility() {
+    document.querySelectorAll("[data-optional-row]").forEach(function (row) {
+      var valueEl = row.querySelector("[data-value]") || row;
+      var isEmpty = text(valueEl) === "";
+      row.classList.toggle("is-empty-for-print", isEmpty);
+    });
+    document.querySelectorAll("[data-optional]").forEach(function (el) {
+      el.classList.toggle("is-empty-for-print", text(el) === "");
+    });
+  }
+
+  document.addEventListener("input", function (e) {
+    if (e.target.closest && (e.target.closest("[data-optional-row]") || e.target.hasAttribute("data-optional"))) {
+      updateOptionalVisibility();
+    }
+  });
+  window.addEventListener("beforeprint", updateOptionalVisibility);
+
+  // ---- Force plain-text paste in all editable fields ----
+  document.addEventListener("paste", function (e) {
+    if (!e.target.closest || !e.target.closest('[contenteditable="true"]')) return;
+    e.preventDefault();
+    var text = (e.clipboardData || window.clipboardData).getData("text/plain");
+    document.execCommand("insertText", false, text);
+  });
+
+  // ---- Prevent Enter from inserting new lines in single-line fields ----
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Enter") return;
+    var el = e.target;
+    if (!el.closest) return;
+    var editable = el.closest('[contenteditable="true"]');
+    if (!editable) return;
+    var multiline = editable.classList.contains("recipient-block") || editable.classList.contains("notes");
+    if (!multiline) e.preventDefault();
+  });
+
+  // ---- Bookmark state: serialize all fields to a URL-safe base64 payload ----
+  function getFieldText(id) {
+    var el = document.getElementById(id);
+    return el ? el.textContent : "";
+  }
+  function setFieldText(id, value) {
+    var el = document.getElementById(id);
+    if (el && value != null) el.textContent = value;
+  }
+
+  var FOOTER_FIELD_IDS = {
+    name: "field-footer-name",
+    street: "field-footer-street",
+    zipCity: "field-footer-zipcity",
+    ceo: "field-footer-ceo",
+    phone: "field-footer-phone",
+    email: "field-footer-email",
+    web: "field-footer-web",
+    vatId: "field-footer-vatid",
+    bankName: "field-footer-bankname",
+    iban: "field-footer-iban",
+    bic: "field-footer-bic",
+    register: "field-footer-register"
+  };
+
+  function getState() {
+    var items = [];
+    itemsBody.querySelectorAll("tr").forEach(function (row) {
+      items.push({
+        d: text(row.querySelector('[data-role="description"]')),
+        q: text(row.querySelector('[data-role="quantity"]')),
+        u: text(row.querySelector('[data-role="unit"]')),
+        p: text(row.querySelector('[data-role="unitPrice"]'))
+      });
+    });
+
+    var footer = {};
+    Object.keys(FOOTER_FIELD_IDS).forEach(function (key) {
+      footer[key] = getFieldText(FOOTER_FIELD_IDS[key]);
+    });
+
+    return {
+      v: 1,
+      letterheadName: getFieldText("field-letterhead-name"),
+      letterheadSlogan: getFieldText("field-letterhead-slogan"),
+      sender: getFieldText("field-sender"),
+      recipient: getFieldText("field-recipient"),
+      invoiceNumber: text(document.querySelector('[data-role="invoice-number"]')),
+      invoiceDate: getFieldText("field-invoice-date"),
+      serviceDate: getFieldText("field-service-date"),
+      customerNumber: getFieldText("field-customer-number"),
+      contactPerson: getFieldText("field-contact-person"),
+      greeting: getFieldText("field-greeting"),
+      intro: getFieldText("field-intro"),
+      items: items,
+      taxRate: text(document.querySelector('[data-role="taxRate"]')),
+      vatNote: getFieldText("field-vat-note"),
+      notePayment: getFieldText("field-note-payment"),
+      noteSignature: getFieldText("field-note-signature"),
+      footer: footer
+    };
+  }
+
+  function applyState(state) {
+    if (!state) return;
+    setFieldText("field-letterhead-name", state.letterheadName);
+    setFieldText("field-letterhead-slogan", state.letterheadSlogan);
+    setFieldText("field-sender", state.sender);
+    setFieldText("field-recipient", state.recipient);
+    invoiceNumberFields.forEach(function (el) { if (state.invoiceNumber != null) el.textContent = state.invoiceNumber; });
+    setFieldText("field-invoice-date", state.invoiceDate);
+    setFieldText("field-service-date", state.serviceDate);
+    setFieldText("field-customer-number", state.customerNumber);
+    setFieldText("field-contact-person", state.contactPerson);
+    setFieldText("field-greeting", state.greeting);
+    setFieldText("field-intro", state.intro);
+
+    if (Array.isArray(state.items) && state.items.length > 0) {
+      itemsBody.innerHTML = "";
+      state.items.forEach(function (item) {
+        var fragment = rowTemplate.content.cloneNode(true);
+        var row = fragment.querySelector("tr");
+        row.querySelector('[data-role="description"]').textContent = item.d || "";
+        row.querySelector('[data-role="quantity"]').textContent = item.q || "";
+        row.querySelector('[data-role="unit"]').textContent = item.u || "";
+        row.querySelector('[data-role="unitPrice"]').textContent = item.p || "";
+        itemsBody.appendChild(row);
+        addRemoveHandler(row);
+      });
+    }
+
+    var taxRateEl = document.querySelector('[data-role="taxRate"]');
+    if (taxRateEl && state.taxRate != null) taxRateEl.textContent = state.taxRate;
+
+    setFieldText("field-vat-note", state.vatNote);
+    setFieldText("field-note-payment", state.notePayment);
+    setFieldText("field-note-signature", state.noteSignature);
+
+    if (state.footer) {
+      Object.keys(FOOTER_FIELD_IDS).forEach(function (key) {
+        if (state.footer[key] != null) setFieldText(FOOTER_FIELD_IDS[key], state.footer[key]);
+      });
+    }
+
+    renumberRows();
+    recalcTotals();
+    updateOptionalVisibility();
+  }
+
+  // Base64url helpers (UTF-8 safe) for embedding state in the URL query string.
+  function encodeState(state) {
+    var json = JSON.stringify(state);
+    var bytes = new TextEncoder().encode(json);
+    var binary = "";
+    bytes.forEach(function (b) { binary += String.fromCharCode(b); });
+    var b64 = btoa(binary);
+    return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  function decodeState(b64url) {
+    var b64 = b64url.replace(/-/g, "+").replace(/_/g, "/");
+    while (b64.length % 4) b64 += "=";
+    var binary = atob(b64);
+    var bytes = new Uint8Array(binary.length);
+    for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    var json = new TextDecoder().decode(bytes);
+    return JSON.parse(json);
+  }
+
+  // ---- "Copy current state as link" button ----
+  var copyBtn = document.getElementById("copy-state-link");
+  function buildBookmarkUrl() {
+    var url = new URL(window.location.href);
+    url.search = "";
+    url.searchParams.set("data", encodeState(getState()));
+    return url.toString();
+  }
+  function showCopyFeedback(success) {
+    var original = "🔗 Aktuellen Stand als Link kopieren";
+    copyBtn.textContent = success ? "✅ Link kopiert!" : "⚠️ Kopieren fehlgeschlagen – siehe Eingabeaufforderung";
+    copyBtn.classList.toggle("copied", success);
+    setTimeout(function () {
+      copyBtn.textContent = original;
+      copyBtn.classList.remove("copied");
+    }, 2500);
+  }
+  copyBtn.addEventListener("click", function () {
+    var url = buildBookmarkUrl();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(function () {
+        showCopyFeedback(true);
+      }, function () {
+        window.prompt("Link kopieren (Strg/Cmd+C, dann Enter):", url);
+        showCopyFeedback(false);
+      });
+    } else {
+      window.prompt("Link kopieren (Strg/Cmd+C, dann Enter):", url);
+      showCopyFeedback(false);
+    }
+  });
+
+  // ---- Load state from URL on page load, if present ----
+  function loadStateFromUrl() {
+    var params = new URLSearchParams(window.location.search);
+    var payload = params.get("data");
+    if (!payload) return;
+    try {
+      applyState(decodeState(payload));
+    } catch (err) {
+      console.error("Konnte gespeicherten Stand nicht laden:", err);
+    }
+  }
+
+  // ---- Initial computation ----
+  renumberRows();
+  recalcTotals();
+  updateOptionalVisibility();
+  loadStateFromUrl();
+})();
+</script>
+
+</body>
+</html>
